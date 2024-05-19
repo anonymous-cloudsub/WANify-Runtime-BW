@@ -13,9 +13,6 @@ while [ ! -f "$FILE" ]
 do
 	sleep 0.2
 done
-echo "$FILE found! Will begin execution" >> ${LOG_FILE}
-rm /home/ec2-user/start.txt
-sudo chmod 777 ${LOG_FILE}
 sudo su - ec2-user -c "iperf3 -s -p 5000 -1 &"
 sudo su - ec2-user -c "iperf3 -s -p 5001 -1 &"
 sudo su - ec2-user -c "iperf3 -s -p 5002 -1 &"
@@ -23,5 +20,9 @@ sudo su - ec2-user -c "iperf3 -s -p 5003 -1 &"
 sudo su - ec2-user -c "iperf3 -s -p 5004 -1 &"
 sudo su - ec2-user -c "iperf3 -s -p 5005 -1 &"
 sudo su - ec2-user -c "iperf3 -s -p 5006 -1 &"
-sleep 5
-sudo su - ec2-user -c "python3 ~/bw_scripts/run-all-client.py"
+sleep 3
+echo "$FILE found! Will begin execution" >> ${LOG_FILE}
+charSent=$(cat /home/ec2-user/start.txt)
+rm /home/ec2-user/start.txt
+sudo chmod 777 ${LOG_FILE}
+sudo su - ec2-user -c "python3 /home/ec2-user/bw_scripts/run-all-client.py $(echo $charSent)"

@@ -2,9 +2,12 @@ import boto3
 import configparser
 import json
 from measure import *
-from cnn.cnnTrain import *
+from distanceBetweenIPs import *
+from predict.rfTrain import *
 import os
 import time
+import subprocess
+import random
 
 config = configparser.RawConfigParser()
 config.read('config.cfg')
@@ -12,7 +15,9 @@ regionAMIMap = {}
 subnetsMap = {}
 instanceType = ""
 all_IPs=[]
+priv_To_Pub_IPs={}
 allRegions_Dict={}
+ip1_ip2_distance_map={}
 ip_To_Region={}
 spawnFromScrath = False
 
@@ -24,6 +29,7 @@ def launchInstances(regions, subnets, instType, privateIPEnabled, debugEnabled):
 	INST_TYPE=instType
 
 	all_IPs=[]
+	priv_To_Pub_IPs={}
 	allRegions_Dict={}
 	ip_To_Region={}
 
@@ -43,13 +49,14 @@ def launchInstances(regions, subnets, instType, privateIPEnabled, debugEnabled):
 				print(newResp['Reservations'][0]['Instances'][0]['PrivateIpAddress'])
 			if privateIPEnabled:
 				all_IPs.append(newResp['Reservations'][0]['Instances'][0]['PrivateIpAddress'])
+				priv_To_Pub_IPs[newResp['Reservations'][0]['Instances'][0]['PrivateIpAddress']]=newResp['Reservations'][0]['Instances'][0]['PublicIpAddress']
 				ip_To_Region[newResp['Reservations'][0]['Instances'][0]['PrivateIpAddress']]=region
 			else:
 				all_IPs.append(newResp['Reservations'][0]['Instances'][0]['PublicIpAddress'])
 				ip_To_Region[newResp['Reservations'][0]['Instances'][0]['PublicIpAddress']]=region
 		allRegions_Dict[region]=instanceIdList
 
-	return all_IPs, ip_To_Region, allRegions_Dict
+	return all_IPs, priv_To_Pub_IPs, ip_To_Region, allRegions_Dict
 
 def terminateInstances(allRegions_Dict):
 	#Terminate all the newly spawned instances
@@ -62,19 +69,19 @@ def terminateInstances(allRegions_Dict):
 			region_client = boto3.client('ec2', region_name=key)
 			region_client.terminate_instances(InstanceIds=allRegions_Dict[key])
 
-# checking cnn training configs
-isCNNModelTrainingEnabled = False
-cnnTrainModeOnly = False
+# checking model training configs for prediction
+isModelTrainingEnabled = False
+trainModeOnly = False
 if config.has_option('PLUGIN_CONFIGS', 'buildModel'):
-	isCNNModelTrainEnabledStr = config.get('PLUGIN_CONFIGS', 'buildModel')
-	if isCNNModelTrainEnabledStr.upper() == "TRUE":
-		print("CNN Model Training is enabled!")
-		isCNNModelTrainingEnabled = True
-	if config.has_option('PLUGIN_CONFIGS', 'cnnTrainModeOnly'):
-		cnnTrainModeOnlyStr = config.get('PLUGIN_CONFIGS', 'cnnTrainModeOnly')
-		if cnnTrainModeOnlyStr.upper() == "TRUE":
-			print("Skipping monitoring and only training the CNN model for datasets present in the configured directory!")
-			cnnTrainModeOnly = True
+	isModelTrainEnabledStr = config.get('PLUGIN_CONFIGS', 'buildModel')
+	if isModelTrainEnabledStr.upper() == "TRUE":
+		print("Model Training is enabled!")
+		isModelTrainingEnabled = True
+	if config.has_option('PLUGIN_CONFIGS', 'trainModeOnly'):
+		trainModeOnlyStr = config.get('PLUGIN_CONFIGS', 'trainModeOnly')
+		if trainModeOnlyStr.upper() == "TRUE":
+			print("Skipping monitoring and only training the prediction model for datasets present in the configured directory!")
+			trainModeOnly = True
 
 NUM_DATACENTERS = 8
 if config.has_option('PLUGIN_CONFIGS', 'NUM_DATACENTERS'):
@@ -85,19 +92,19 @@ if not config.has_option('PLUGIN_CONFIGS', 'datasetPath'):
 datasetPath = config.get('PLUGIN_CONFIGS', 'datasetPath')
 datasetPathAbs = os.path.abspath(datasetPath)
 
-if (isCNNModelTrainingEnabled or cnnTrainModeOnly) and not(config.has_option('PLUGIN_CONFIGS', 'cnnOutputPath')):
-	raise Exception("Error: CNN output path is not configured correctly!")
-cnnOutputPath = config.get('PLUGIN_CONFIGS', 'cnnOutputPath')
-cnnOutputPathAbs = os.path.abspath(cnnOutputPath)
+if (isModelTrainingEnabled or trainModeOnly) and not(config.has_option('PLUGIN_CONFIGS', 'modelOutputPath')):
+	raise Exception("Error: Model output path is not configured correctly!")
+modelOutputPath = config.get('PLUGIN_CONFIGS', 'modelOutputPath')
+modelOutputPathAbs = os.path.abspath(modelOutputPath)
 
 isExistDir = os.path.exists(datasetPathAbs)
 if not isExistDir:
 	os.makedirs(datasetPathAbs)
 
-if(isCNNModelTrainingEnabled and cnnTrainModeOnly):
+if(isModelTrainingEnabled and trainModeOnly):
 	if not isExistDir:
-		raise Exception("Error: datasetPath is not configured correctly.")
-	startCNNGeneration(NUM_DATACENTERS, datasetPathAbs, cnnOutputPathAbs)
+		raise Exception("Error: dataset directory might be empty.")
+	startRfTrain(NUM_DATACENTERS, datasetPathAbs, modelOutputPathAbs)
 else:
 	print("Checking configs and launching instances ...")
 	if not config.has_option('PLUGIN_CONFIGS', 'username'):
@@ -131,12 +138,37 @@ else:
 		if statusProgressKeyStr.upper() == "TRUE":
 			statusProgressMsgEnabled = True
 
+	runForDurations = []
+	runForDurationsContains1 = False
+	if config.has_option('PLUGIN_CONFIGS', 'runForDurations'):
+		runForDurations = config.get('PLUGIN_CONFIGS', 'runForDurations')
+		runForDurations = runForDurations.split(",")
+	for runDurationEle in runForDurations:
+		if (int(runDurationEle.strip()) == 1):
+			runForDurationsContains1 = True
+			break
+	if not(runForDurationsContains1):
+		runForDurations.insert(0, "1")
+
 	if config.has_option('LAUNCH_CONFIGS', 'AMIs') and config.has_option('LAUNCH_CONFIGS', 'Subnets') and config.has_option('LAUNCH_CONFIGS', 'instanceType'):
 		regionAMIMap = json.loads(config.get('LAUNCH_CONFIGS', 'AMIs'))
 		subnetsMap = json.loads(config.get('LAUNCH_CONFIGS', 'Subnets'))
 		instanceType = config.get('LAUNCH_CONFIGS', 'instanceType')
 		spawnFromScrath = True
-		all_IPs, ip_To_Region, allRegions_Dict = launchInstances(regionAMIMap, subnetsMap, instanceType, privateIPEnabled, debugEnabled)
+		all_IPs, priv_To_Pub_IPs, ip_To_Region, allRegions_Dict = launchInstances(regionAMIMap, subnetsMap, instanceType, privateIPEnabled, debugEnabled)
+		if len(priv_To_Pub_IPs) > 0:
+			#private IPs are used for monitoring, but use public IPs for tracking distance between DCs
+			for ip1 in all_IPs:
+				for ip2 in all_IPs:
+					if ip1 != ip2:
+						ip1_ip2_distance_map[ip1+"-"+ip2] = round(computeIPDistance(priv_To_Pub_IPs[ip1], priv_To_Pub_IPs[ip2]),2)
+			print(ip1_ip2_distance_map)
+		else:
+			for ip1 in all_IPs:
+				for ip2 in all_IPs:
+					if ip1 != ip2:
+						ip1_ip2_distance_map[ip1+"-"+ip2] = round(computeIPDistance(ip1, ip2),2)
+			print(ip1_ip2_distance_map)
 
 	datasetSize = 10
 	if not config.has_option('PLUGIN_CONFIGS', 'datasetSize'):
@@ -175,71 +207,113 @@ else:
 		elif "m" in runInterval:
 			sleepTimeInSeconds = round(float(runInterval.split("m")[0]) * 24 * 3600 * 7 * 30)
 
-	print("Launching instances completed! Static BW monitoring in progress ... This can take several minutes or days depending on the dataset size requested!")
+	print("Launching instances completed! BW monitoring in progress ... This can take several minutes or days depending on the dataset size requested!")
 	startIndex = index
 	startOfMonitorLoop = time.time()
+	prevRunDurationRef = 20
+	originalPrevRunDurationRef = prevRunDurationRef
+	#cleanupMode 1 denotes full cleanup after each monitoring, 2 denotes sending monitoring files the first time but skipping cleanup, 3 denotes no send and no cleanup (assuming monitoring files are already transferred)
+	cleanupMode = 1
 	while index <= datasetSize:
-		if runMode == "BOTH" or runMode == "STATIC":
-			if statusProgressMsgEnabled:
-				print("Starting static monitoring measurement for sample# {}".format(index), flush=True)
-			# Calling runMonitor in measure.py with isDynamic = False
-			statusCode = runMonitor(username, all_IPs, ip_To_Region, basePort, privateKeyPathAbs, privateIPEnabled, datasetPathAbs, index, instanceType, False, debugEnabled, statusProgressMsgEnabled)
-			if statusCode is not None:
-				print("Some error has occurred in call to runMonitor for static measurements!", flush=True)
-				if maxRetries > 0:
-					print("Retrying #{} for static monitoring!".format(initialMaxRetries - maxRetries + 1), flush=True)
-					maxRetries = maxRetries - 1
-					outputFilePrefix = "static"
-					outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
-					proc = subprocess.Popen(["rm", "-f", outputFileName])
-					proc.wait()
-					continue
-				if maxRetries == 0:
-					print("Reached maximum retry limit with error for static monitor. Hence exiting!!!", flush=True)
-					break
-			if statusProgressMsgEnabled:
-				print("Completed static monitoring measurement for sample# {}".format(index), flush=True)
-				maxRetries = initialMaxRetries
+		numDCs = random.randint(2, NUM_DATACENTERS)
+		print("The numDCs is: {}".format(numDCs))
+		dcIndexChoices=[]
+		selectedIPsForProbe=[]
+		startDCSelect=0
+		if(numDCs != NUM_DATACENTERS):
+			while (startDCSelect<numDCs):
+				randValRead = random.randint(2, NUM_DATACENTERS)
+				if not(randValRead in dcIndexChoices):
+					dcIndexChoices.append(randValRead)
+					startDCSelect = startDCSelect + 1
+			for dcIndexEle in dcIndexChoices:
+				selectedIPsForProbe.append(all_IPs[dcIndexEle-1])
+			print("The selectedIPsForProbe are: {}".format(selectedIPsForProbe))
+		else:
+			selectedIPsForProbe = all_IPs
+			print("The selectedIPsForProbe are: {}".format(selectedIPsForProbe))
 
+		for runDurationEle in runForDurations:
+			runDurationEleNoSpace = runDurationEle.strip()
+			proc_update = subprocess.Popen(["sed", "-i", "s/"+"test_duration="+str(prevRunDurationRef)+"/"+"test_duration="+runDurationEleNoSpace+"/g", "src/bwtesting-client.py"])
+			proc_update.wait()
+			proc_update = subprocess.Popen(["sed", "-i", "s/"+"test_duration="+str(prevRunDurationRef)+"/"+"test_duration="+runDurationEleNoSpace+"/g", "src/bwtesting-client-copy.py"])
+			proc_update.wait()
+			prevRunDurationRef = int(runDurationEleNoSpace)
+			sleepTimeForMonitor = 8
+			if int(runDurationEleNoSpace) != 1:
+				sleepTimeForMonitor = int(runDurationEleNoSpace) + 10
+			if (runMode == "BOTH" or runMode == "STATIC") and (int(runDurationEleNoSpace) != 1):
+				if statusProgressMsgEnabled:
+					print("Starting static monitoring measurement for sample# {}".format(index), flush=True)
+				# Calling runMonitor in measure.py with isDynamic = False
+				statusCode = runMonitor(username, selectedIPsForProbe, ip_To_Region, basePort, privateKeyPathAbs, privateIPEnabled, datasetPathAbs, index, instanceType, False, runDurationEleNoSpace, debugEnabled, statusProgressMsgEnabled, ip1_ip2_distance_map, numDCs, sleepTimeForMonitor, 1)
+				if statusCode is not None:
+					print("Some error has occurred in call to runMonitor for static measurements!", flush=True)
+					if maxRetries > 0:
+						print("Retrying #{} for static monitoring!".format(initialMaxRetries - maxRetries + 1), flush=True)
+						maxRetries = maxRetries - 1
+						outputFilePrefix = "static"
+						outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
+						proc = subprocess.Popen(["rm", "-f", outputFileName])
+						proc.wait()
+						continue
+					if maxRetries == 0:
+						print("Reached maximum retry limit with error for static monitor. Hence exiting!!!", flush=True)
+						break
+				if statusProgressMsgEnabled:
+					print("Completed static monitoring measurement for sample# {}".format(index), flush=True)
+					maxRetries = initialMaxRetries
+
+			if runMode == "BOTH" or runMode == "DYNAMIC":
+				if len(runForDurations) == 2 and cleanupMode == 1:
+					cleanupMode = 2
+				if statusProgressMsgEnabled:
+					print("Starting dynamic/real-time monitoring measurement for sample# {}".format(index), flush=True)
+				# Calling runMonitor in measure.py with isDynamic = True
+				statusCode = runMonitor(username, selectedIPsForProbe, ip_To_Region, basePort, privateKeyPathAbs, privateIPEnabled, datasetPathAbs, index, instanceType, True, runDurationEleNoSpace, debugEnabled, statusProgressMsgEnabled, ip1_ip2_distance_map, numDCs, sleepTimeForMonitor, cleanupMode)
+				if statusCode is not None:
+					print("Some error has occurred in call to runMonitor for dynamic measurements!", flush=True)
+					if maxRetries > 0:
+						print("Retrying #{} for dynamic monitoring!".format(initialMaxRetries - maxRetries + 1), flush=True)
+						cleanupMode = 1
+						maxRetries = maxRetries - 1
+						outputFilePrefix = "static"
+						outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
+						proc = subprocess.Popen(["rm", "-f", outputFileName])
+						proc.wait()
+						outputFilePrefix = "dynamic"
+						outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
+						proc = subprocess.Popen(["rm", "-f", outputFileName])
+						proc.wait()
+						continue
+					if maxRetries == 0:
+						print("Reached maximum retry limit with error for dynamic monitor. Hence exiting!!!", flush=True)
+						break
+				if statusProgressMsgEnabled:
+					print("Completed measurement for sample# {}".format(index), flush=True)
+					maxRetries = initialMaxRetries
 		if runMode == "BOTH" or runMode == "DYNAMIC":
-			if statusProgressMsgEnabled:
-				print("Starting dynamic/real-time monitoring measurement for sample# {}".format(index), flush=True)
-			# Calling runMonitor in measure.py with isDynamic = True
-			statusCode = runMonitor(username, all_IPs, ip_To_Region, basePort, privateKeyPathAbs, privateIPEnabled, datasetPathAbs, index, instanceType, True, debugEnabled, statusProgressMsgEnabled)
-			if statusCode is not None:
-				print("Some error has occurred in call to runMonitor for dynamic measurements!", flush=True)
-				if maxRetries > 0:
-					print("Retrying #{} for dynamic monitoring!".format(initialMaxRetries - maxRetries + 1), flush=True)
-					maxRetries = maxRetries - 1
-					outputFilePrefix = "static"
-					outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
-					proc = subprocess.Popen(["rm", "-f", outputFileName])
-					proc.wait()
-					outputFilePrefix = "dynamic"
-					outputFileName = datasetPathAbs+"/"+outputFilePrefix+str(index)+".json"
-					proc = subprocess.Popen(["rm", "-f", outputFileName])
-					proc.wait()
-					continue
-				if maxRetries == 0:
-					print("Reached maximum retry limit with error for dynamic monitor. Hence exiting!!!", flush=True)
-					break
-			if statusProgressMsgEnabled:
-				print("Completed dynamic/real-time monitoring measurement for sample# {}".format(index), flush=True)
-				maxRetries = initialMaxRetries
+			if len(runForDurations) == 2 and cleanupMode == 2:
+				cleanupMode = 3
 		index = index + 1
 		if (sleepTimeInSeconds > 0 and index <= datasetSize):
-			print("Going into sleep for {} seconds.".format(sleepTimeInSeconds))
+			print("Going into sleep for {} seconds.".format(sleepTimeInSeconds), flush=True)
 			time.sleep(sleepTimeInSeconds)
 	endOfMonitorLoop = time.time()
+	proc_update = subprocess.Popen(["sed", "-i", "s/"+"test_duration="+str(prevRunDurationRef)+"/"+"test_duration="+str(originalPrevRunDurationRef)+"/g", "src/bwtesting-client.py"])
+	proc_update.wait()
+	proc_update = subprocess.Popen(["sed", "-i", "s/"+"test_duration="+str(prevRunDurationRef)+"/"+"test_duration="+str(originalPrevRunDurationRef)+"/g", "src/bwtesting-client-copy.py"])
+	proc_update.wait()
 
 	print("Monitoring Compledted for {} samples in {} seconds !!!".format((datasetSize - startIndex + 1), (endOfMonitorLoop - startOfMonitorLoop)), flush=True)
 
 	if spawnFromScrath:
 		try:
-			terminateInstances(allRegions_Dict)
+			#terminateInstances(allRegions_Dict)
 			print("Instances deleted!!!")
 		except:
 			print("Some error occurred during deletion of instances!!!")
 
-	if (isCNNModelTrainingEnabled):
-		startCNNGeneration(NUM_DATACENTERS, datasetPathAbs, cnnOutputPathAbs)
+	if (isModelTrainingEnabled):
+		startRfTrain(NUM_DATACENTERS, datasetPathAbs, modelOutputPathAbs)

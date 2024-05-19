@@ -14,6 +14,6 @@ Few setups are required on the AMI images before they can be used.
 
 	This can be created in the /etc/systemd/system/ directory and refer linux service creation for detailed steps.
 
-3. Create a directory called "run-scripts" in the home directory.
+3. Create directories called "run-scripts", "run-scripts_sp" and "run-scripts_d" in the home directory.
 4. Place the cleanup.sh in the home directory after updating the service name and run-scripts directory.
 5. Above changes should be part of the AMI image, which is to be specified in config.cfg file. An easy way to do this is by setting up the AMI in 1 region (say us-east-1) and then copying the same AMI to other required regions.
