@@ -193,5 +193,5 @@ def greedyApp(numDCs, all_IP_List, ipToRegions, privateKeyPathAbs, username, br)
 			# out, err = proc.communicate()
 			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", "maxBW.pkl", destHostAddress])
 			# out, err = proc.communicate()
-	subprocess.Popen(["sh", "/home/ec2-user/realtimeBW/aws/stopBWServiceOnWorkers.sh"])
+	subprocess.Popen(["sh", "/home/ec2-user/realtimeBW/aws/scripts/stopBWServiceOnWorkers.sh"])
 
