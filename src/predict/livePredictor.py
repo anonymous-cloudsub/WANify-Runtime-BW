@@ -229,43 +229,43 @@ if len(pubToPrivateIps) > 0:
 		ipToRegions[pubToPrivateIps[k]] = inUseIpsToProviderRegions[k]
 
 #removeThis
-TEST_DCs=8
-IS_RANDOM_SAMPLE=False
-if IS_RANDOM_SAMPLE and False:
-	fromEachProvider = TEST_DCs//2
-	fromAWS=fromEachProvider
-	fromGCP=fromEachProvider
-	print("fromEachProvider is: {}".format(fromEachProvider))
-	if (fromEachProvider*2 == TEST_DCs):
-		fromAWS=fromEachProvider
-		fromGCP=fromEachProvider
-	else:
-		fromAWS=fromEachProvider
-		fromGCP=fromEachProvider+1
-	print("fromAWS: {}".format(fromAWS))
-	print("fromGCP: {}".format(fromGCP))
-	numDCs = TEST_DCs
-	awsIps=[]
-	gcpIps=[]
-	for k,v in inUseIpsToProviderRegions.items():
-		if "gcp" in v:
-			gcpIps.append(k)
-		else:
-			awsIps.append(k)
-	print("All AWS IPs: {}".format(awsIps))
-	print("All GCP IPs: {}".format(gcpIps))
-	filteredAWSIps = random.sample(awsIps, fromAWS)
-	print("Filtered AWS IPs: {}".format(filteredAWSIps))
-	filteredGCPIps = random.sample(gcpIps, fromGCP)
-	print("Filtered GCP IPs: {}".format(filteredGCPIps))
-	allIPs = filteredAWSIps + filteredGCPIps
-	with open('./filteredIps.pkl', 'wb') as file:  
-		pickle.dump(allIPs, file)
-elif False:
-	numDCs = TEST_DCs
-	with open('./filteredIps.pkl', 'rb') as file:  
-		allIPs = pickle.load(file)
-print("FilteredIPs are: {}".format(allIPs))
+# TEST_DCs=8
+# IS_RANDOM_SAMPLE=False
+# if IS_RANDOM_SAMPLE and False:
+# 	fromEachProvider = TEST_DCs//2
+# 	fromAWS=fromEachProvider
+# 	fromGCP=fromEachProvider
+# 	print("fromEachProvider is: {}".format(fromEachProvider))
+# 	if (fromEachProvider*2 == TEST_DCs):
+# 		fromAWS=fromEachProvider
+# 		fromGCP=fromEachProvider
+# 	else:
+# 		fromAWS=fromEachProvider
+# 		fromGCP=fromEachProvider+1
+# 	print("fromAWS: {}".format(fromAWS))
+# 	print("fromGCP: {}".format(fromGCP))
+# 	numDCs = TEST_DCs
+# 	awsIps=[]
+# 	gcpIps=[]
+# 	for k,v in inUseIpsToProviderRegions.items():
+# 		if "gcp" in v:
+# 			gcpIps.append(k)
+# 		else:
+# 			awsIps.append(k)
+# 	print("All AWS IPs: {}".format(awsIps))
+# 	print("All GCP IPs: {}".format(gcpIps))
+# 	filteredAWSIps = random.sample(awsIps, fromAWS)
+# 	print("Filtered AWS IPs: {}".format(filteredAWSIps))
+# 	filteredGCPIps = random.sample(gcpIps, fromGCP)
+# 	print("Filtered GCP IPs: {}".format(filteredGCPIps))
+# 	allIPs = filteredAWSIps + filteredGCPIps
+# 	with open('./filteredIps.pkl', 'wb') as file:  
+# 		pickle.dump(allIPs, file)
+# elif False:
+# 	numDCs = TEST_DCs
+# 	with open('./filteredIps.pkl', 'rb') as file:  
+# 		allIPs = pickle.load(file)
+# print("FilteredIPs are: {}".format(allIPs))
 #removeThis
 
 # allIPs = random.sample(allIPs, TEST_DCs)
