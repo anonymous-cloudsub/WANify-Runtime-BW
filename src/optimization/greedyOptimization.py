@@ -161,13 +161,17 @@ def greedyApp(numDCs, all_IP_List, ipToRegions, privateKeyPathAbs, username, br)
 	brMaxNew = max(map(max, bWTgtMax))
 	print("\n###The max BW_max is: {}".format(brMaxNew))
 	for ip in all_IP_List:
-		with open('minChannel.pkl','wb') as f:
+		tmpDirPath = os.path.abspath(ip)
+		isExistDir = os.path.exists(tmpDirPath)
+		if not isExistDir:
+			os.makedirs(tmpDirPath)
+		with open(ip+'/minChannel.pkl','wb') as f:
 			pickle.dump(np.ceil(chAllMin[dcToIndexMap[ipToRegions[ip]]]/regionCounts[ipToRegions[ip]]), f)
-		with open('maxChannel.pkl', 'wb') as f:
+		with open(ip+'/maxChannel.pkl', 'wb') as f:
 			pickle.dump(np.ceil(chAllMax[dcToIndexMap[ipToRegions[ip]]]/regionCounts[ipToRegions[ip]]), f)
-		with open('minBW.pkl', 'wb') as f:
+		with open(ip+'/minBW.pkl', 'wb') as f:
 			pickle.dump(np.ceil(bWTgtMin[dcToIndexMap[ipToRegions[ip]]]/regionCounts[ipToRegions[ip]]), f)
-		with open('maxBW.pkl', 'wb') as f:
+		with open(ip+'/maxBW.pkl', 'wb') as f:
 			pickle.dump(np.ceil(bWTgtMax[dcToIndexMap[ipToRegions[ip]]]/regionCounts[ipToRegions[ip]]), f)
 		usernameStr="ubuntu"
 		if isinstance(username, dict):
@@ -176,22 +180,22 @@ def greedyApp(numDCs, all_IP_List, ipToRegions, privateKeyPathAbs, username, br)
 		destHostAddress=usernameStr+"@"+ip+":/usr/local/spark/WB_Optimizer/"
 		# print("###The destHostAddress is: {}".format(destHostAddress))
 		if isinstance(privateKeyPathAbs, dict):
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", "minChannel.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", ip+"/minChannel.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", "maxChannel.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", ip+"/maxChannel.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", "minBW.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", ip+"/minBW.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", "maxBW.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs[ipToRegions[ip].split("~")[0]], "-o", "StrictHostKeyChecking=no", "-q", ip+"/maxBW.pkl", destHostAddress])
 			# out, err = proc.communicate()
 		else:
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", "minChannel.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", ip+"/minChannel.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", "maxChannel.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", ip+"/maxChannel.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", "minBW.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", ip+"/minBW.pkl", destHostAddress])
 			# out, err = proc.communicate()
-			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", "maxBW.pkl", destHostAddress])
+			proc = subprocess.Popen(["scp", "-i", privateKeyPathAbs, "-o", "StrictHostKeyChecking=no", "-q", ip+"/maxBW.pkl", destHostAddress])
 			# out, err = proc.communicate()
 	#subprocess.Popen(["sh", "/home/ec2-user/realtimeBW/aws/scripts/stopBWServiceOnWorkers.sh"])
 
