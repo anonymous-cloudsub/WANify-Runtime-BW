@@ -121,11 +121,11 @@ def greedyApp(numDCs, all_IP_List, ipToRegions, privateKeyPathAbs, username, br)
 	bWTgtMin = copy.deepcopy(br)
 	bWTgtMax = copy.deepcopy(br)
 
-	resultRowWise = list(map(max, rel))
+	resultRowWise = list(map(sum, rel))
 	#resultRowWise = [x - 1 for x in resultRowWise]
-	resultAll = sum(map(sum, rel)) - len(rel)
+	resultAll = sum(map(sum, rel))
 
-	#Here we identify how these 10 channels can be distributed based on the inferred closeness relationships in a greedy way
+	#Here we identify how these channels can be distributed based on the inferred closeness relationships in a greedy way
 	for i in range(len(rel)):
 		for j in range(len(rel)):
 			if i != j:
